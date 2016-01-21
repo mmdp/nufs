@@ -252,9 +252,6 @@ int main(int argc, char **argv) {
             unsigned long last_d = path.find_last_of('/');
             string dir_name = path.substr(last_d+1);
             path = path.substr(0, path.size()-dir_name.size()-1);
-            log("dir name", dir_name);
-            log("path", path);
-            log("curr uid", current_uid);
             if (!fsp->create_directory(dir_name, path, current_uid, current_gid)) {
                 print(string("mkdir: cannot create directory ‘").append(tokens[1]).append("’"));
                 continue;
