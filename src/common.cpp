@@ -24,6 +24,10 @@ void log(std::string key, int value) {
     std::cout << key << ": " << value << std::endl;
 }
 
+void log(std::string key, std::string value) {
+    std::cout << key << ": " << value << std::endl;
+}
+
 int power2(int x) {
     return (x ? 2 * power2(x-1) : 1);
 }

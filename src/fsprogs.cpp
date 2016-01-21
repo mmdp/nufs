@@ -1,4 +1,5 @@
 #include <iostream>
+#include <libgen.h>
 #include "fsprogs.h"
 
 fsprogs::fsprogs(std::string device_file_name) {
@@ -8,6 +9,8 @@ fsprogs::fsprogs(std::string device_file_name) {
     this->sb = SuperBlock();
     device_f.seekp(0, std::ios::beg);
     device_f.read((char*)&sb, sizeof(SuperBlock));
+
+    memset(empty_block, '\0', g_block_size);
 }
 
 std::fstream fsprogs::get_fsteam(std::string device_file_name) {
@@ -80,8 +83,11 @@ bool fsprogs::create_fs(uint16_t blocks_count) {
 
 int fsprogs::update_inode(uint16_t i_pos, Inode* inode) {
     device_f.seekp(g_block_size * 3 + i_pos * g_inode_size, std::ios::beg);
-    device_f.write((char*)inode, sizeof(inode));
+    device_f.write((char*)inode, g_inode_size);
     device_f.flush();
+    // Unknown: flush not work ?
+    //log("orig node size", inode->i_size);
+    //log("tmp node ctime", read_inode(i_pos)->i_ctime);
     return 0;
 }
 
@@ -156,7 +162,7 @@ uint16_t fsprogs::create_inode(uint16_t inode_type, uint16_t uid, uint16_t gid) 
 }
 
 bool fsprogs::write_to_file(std::string file_path, std::string data) {
-    // TODO relative path
+
     unsigned long last_d = file_path.find_last_of('/');
     if (last_d < 0 || last_d + 1 == file_path.length()) {
         return false;
@@ -165,21 +171,23 @@ bool fsprogs::write_to_file(std::string file_path, std::string data) {
     // Check data size
     if (data.size() > sb.s_free_blocks_count * g_block_size)
         return false;   // no enough space
-    if (data.size() == 0)
+    if (data.size() == 0) {
+        // TODO do empty file
         return true;    // nothing to write
+    }
 
     //std::string path = file_path.substr(0, last_d);
     //std::string file_name = file_path.substr(last_d);
 
     // Get file inode
     int file_i_pos = get_last_inode_pos(file_path);
-    log(0, "file path: " + file_path);
-    log(0, "file i pos: " + std::to_string(file_i_pos));
+    //log(0, "file path: " + file_path);
+    //log(0, "file i pos: " + std::to_string(file_i_pos));
     if (file_i_pos < 0) {
         return false;
     }
     Inode* inode_p = read_inode((uint16_t) file_i_pos);
-    log(0, "file i pos: " + std::to_string(file_i_pos));
+    //log(0, "file i pos: " + std::to_string(file_i_pos));
 
     // TODO delay allocation
     int data_blocks = (int) ((data.size() + 511) / g_block_size);
@@ -232,16 +240,14 @@ bool fsprogs::write_to_file(std::string file_path, std::string data) {
         std::string tmp_string = data.substr((unsigned long) (i * g_block_size), g_block_size);
         log(0, std::to_string(i));
         log(0, tmp_string);
-        const char* tmp_data = tmp_string.c_str();
+        const char *tmp_data = tmp_string.c_str();
         if (i<4) {
             inode_p->i_block[i] = file_data_pos[blk_idx++];
             log(0, "i block i");
             log(0, std::to_string(inode_p->i_block[i]));
             // TODO inline fun to write
             int d_pos = inode_p->i_block[i];
-            device_f.seekp(g_block_size * d_pos, std::ios::beg);
-            device_f.write(tmp_data, tmp_string.size());
-            device_f.flush();
+            write_to_device(tmp_data, d_pos, tmp_string.size());
             // TODO return int
         } else if (i>=4 && i<260) {
             if (i == 4) {
@@ -255,15 +261,11 @@ bool fsprogs::write_to_file(std::string file_path, std::string data) {
             log(0, std::to_string(container_block[i-4]));
             // Write data to device
             int d_pos = container_block[i-4];
-            device_f.seekp(g_block_size * d_pos, std::ios::beg);
-            device_f.write(tmp_data, tmp_string.size());
+            write_to_device(tmp_data, d_pos, tmp_string.size());
             if (i == 259 || i+1 == data_blocks) {
                 // Write 4th block to device
-                device_f.seekp(g_block_size * inode_p->i_block[4], std::ios::beg);
-                // TODO cast
-                device_f.write((const char *) container_block, sizeof(char) * g_block_size);
+                write_to_device((const char *) container_block, inode_p->i_block[4]);
             }
-            device_f.flush();
         } else {
             // Allocate 1st container
             if (i == 260) {
@@ -285,26 +287,18 @@ bool fsprogs::write_to_file(std::string file_path, std::string data) {
 
             // Write data to device
             int d_pos = container2_block[idx2];
-            device_f.seekp(g_block_size * d_pos, std::ios::beg);
-            device_f.write(tmp_data, tmp_string.size());
-            device_f.flush();
+            write_to_device(tmp_data, d_pos, tmp_string.size());
 
             // Write 2nd container to device
             if (idx2 == 255 || i+1 == data_blocks) {
                 d_pos = container1_block[idx1];
-                device_f.seekp(g_block_size * d_pos, std::ios::beg);
-                // TODO cast
-                device_f.write((const char *) container2_block, sizeof(char) * g_block_size);
-                device_f.flush();
+                write_to_device((const char *) container2_block, d_pos);
             }
 
             // Write 1st container to device
             if (i+1 == data_blocks) {
                 d_pos = inode_p->i_block[5];
-                device_f.seekp(g_block_size * d_pos, std::ios::beg);
-                // TODO cast
-                device_f.write((const char *) container1_block, sizeof(char) * g_block_size);
-                device_f.flush();
+                write_to_device((const char *) container1_block, d_pos);
             }
         }
     }
@@ -397,7 +391,7 @@ std::string fsprogs::read_file(std::string file_path) {
         // Workaround
         tmp_string = std::string(block_data);
         unsigned long length = tmp_string.size() > g_block_size ? g_block_size : tmp_string.size();
-        log("tmp str len", (int) length);
+        //log("tmp str len", (int) length);
         data += tmp_string.substr(0, length);
     }
 
@@ -410,11 +404,12 @@ bool fsprogs::create_file(uint8_t file_type, std::string file_name, std::string 
     path = check_path(path);
     if (path == "") return false;
 
-    // Get up dir data position
-    Inode *inode_p = get_last_inode(path);
+    // Get parent dir data position
+    uint16_t updir_inode_pos = (uint16_t) get_last_inode_pos(path);
+    if (updir_inode_pos < 0) return false;
+    Inode *inode_p = read_inode(updir_inode_pos);
     if (!inode_p) return false;
     uint16_t updir_data_pos = inode_p->i_block[0];
-    delete inode_p;
 
     // Write to parent dir content
 
@@ -451,11 +446,16 @@ bool fsprogs::create_file(uint8_t file_type, std::string file_name, std::string 
             //std::cout << "dir name: " << dir_entry.name << std::endl;
             device_f.seekp(g_block_size * updir_data_pos + i * g_dir_entry_size, std::ios::beg);
             device_f.write((char *)&dir_entry, sizeof(char) * g_dir_entry_size);
+            device_f.flush();
+            inode_p->i_size += 1;
+            //log("inode size", inode_p->i_size);
+            update_inode(updir_inode_pos, inode_p);
             success = true;
             break;
         }
     }
 
+    delete inode_p;
     device_f.flush();
 
     return success;
@@ -469,6 +469,178 @@ bool fsprogs::create_directory(std::string dir_name, std::string path,
 bool fsprogs::touch_file(std::string file_name, std::string path,
                 uint16_t uid, uint16_t gid) {
     return create_file(1, file_name, path, uid, gid);
+}
+
+bool fsprogs::remove_file(std::string file_path, bool force, bool recursive) {
+
+    unsigned long last_d = file_path.find_last_of('/');
+    if (last_d < 0 || last_d + 1 == file_path.length()) {
+        return false;
+    }
+
+    std::string dir_path = file_path.substr(0, last_d);
+    std::string file_name = file_path.substr(last_d+1);
+
+    int dir_i_pos = get_last_inode_pos(dir_path);
+    Inode* dir_inode_p = get_last_inode(dir_path);
+    if(!dir_inode_p) return false;
+    uint16_t updir_data_pos = dir_inode_p->i_block[0];
+
+    DirectoryEntry dir_entry;
+    for (int i = 0; i < 16; i++) {
+        device_f.seekp(g_block_size * updir_data_pos + i * g_dir_entry_size, std::ios::beg);
+        device_f.read((char *)&dir_entry, 32);
+        if (dir_entry.name == file_name) {
+            Inode* inode_p = read_inode(dir_entry.inode);
+            if (S_ISDIR(inode_p->i_mode) && inode_p->i_size > 0) {
+                return false;
+            }
+            // Remove from bitmap if only one link
+            if (inode_p->i_links_count == 1) {
+                remove_file_bits(dir_entry.inode, inode_p);
+            }
+
+            // Remove dir entry
+            char empty_entry[g_dir_entry_size];
+            memset(empty_entry, '\0', g_dir_entry_size);
+            device_f.seekp(g_block_size * updir_data_pos + i * g_dir_entry_size, std::ios::beg);
+            device_f.write(empty_entry, g_dir_entry_size);
+            device_f.flush();
+            // Update dir size
+            dir_inode_p->i_size -= 1;
+            update_inode((uint16_t) dir_i_pos, dir_inode_p);
+
+            delete inode_p;
+            delete dir_inode_p;
+            return true;
+        } else {
+            continue;
+        }
+    }
+    delete dir_inode_p;
+    return false;
+}
+
+bool fsprogs::remove_dir(std::string dir_path) {
+    return remove_file(dir_path);
+}
+
+bool fsprogs::remove_file_bits(uint16_t i_pos, Inode* inode_p) {
+    // Unset inode bitmap
+    char i_bitmap[g_block_size];
+    device_f.seekp(g_block_size * 2, std::ios::beg);
+    device_f.read(i_bitmap, g_block_size);
+    int bits[1] = {i_pos};
+    recover_bitmap(i_bitmap, bits, 1);
+    device_f.seekp(g_block_size * 2, std::ios::beg);
+    device_f.write(i_bitmap, g_block_size);
+
+    // Unset data bitmap
+    char d_bitmap[g_block_size];
+    int d_bits[inode_p->i_blocks];
+    uint16_t container1_block[256] = {};
+    uint16_t container2_block[256] = {};
+    int container_bit[1];
+    device_f.seekp(g_block_size, std::ios::beg);
+    device_f.read(d_bitmap, g_block_size);
+    for (int j = 0; j < inode_p->i_blocks; j++) {
+        if (j < 4) {
+            d_bits[j] = inode_p->i_block[j] - sb.s_first_data_block;
+        } else if (j >= 4 && j < 260) {
+            if (j == 4) {
+                device_f.seekp(g_block_size * inode_p->i_block[4], std::ios::beg);
+                device_f.read((char *) container1_block, g_block_size);
+            }
+            d_bits[j] = container1_block[j-4] - sb.s_first_data_block;
+            if (j == 259 || j+1 == inode_p->i_blocks) {
+                container_bit[0] = inode_p->i_block[4] - sb.s_first_data_block;
+                recover_bitmap(d_bitmap, container_bit, 1);
+            }
+        } else {
+            if (j == 260) {
+                // Read 1st container
+                device_f.seekp(g_block_size * inode_p->i_block[5], std::ios::beg);
+                device_f.read((char *) container1_block, g_block_size);
+            }
+            int idx1 = (j-260) / 256;
+            int idx2 = (j-260) % 256;
+            if (idx2 == 0) {
+                // Read 2nd container
+                device_f.seekp(g_block_size * container1_block[idx1], std::ios::beg);
+                device_f.read((char *) container2_block, g_block_size);
+            }
+            d_bits[j] = container2_block[idx2] - sb.s_first_data_block;
+            // Remove container bits
+            if (idx2 == 255 || j+1 == inode_p->i_blocks) {
+                container_bit[0] = container1_block[idx1] - sb.s_first_data_block;
+                recover_bitmap(d_bitmap, container_bit, 1);
+            }
+            if (j+1 == inode_p->i_blocks) {
+                container_bit[0] = inode_p->i_block[5] - sb.s_first_data_block;
+                recover_bitmap(d_bitmap, container_bit, 1);
+            }
+        }
+    }
+    recover_bitmap(d_bitmap, d_bits, inode_p->i_blocks);
+    device_f.seekp(g_block_size, std::ios::beg);
+    device_f.write(d_bitmap, g_block_size);
+    device_f.flush();
+
+    return true;
+}
+
+bool fsprogs::add_link(std::string file_path, std::string dest_path) {
+
+    int file_i_pos = get_last_inode_pos(file_path);
+    if (file_i_pos < 0) return false;
+    Inode* file_inode_p = read_inode((uint16_t) file_i_pos);
+    //if (!S_ISREG(file_inode_p->i_mode)) {
+    //    return false;
+    //}
+
+    std::string file_name = basename((char *) file_path.c_str());
+    std::string dir_name = dirname(strdup((char *) file_path.c_str()));
+
+    uint16_t dest_i_pos = (uint16_t) get_last_inode_pos(dest_path);
+    if (dest_i_pos < 0) return false;
+    Inode* dest_inode_p = read_inode((uint16_t) dest_i_pos);
+    uint16_t updir_data_pos = dest_inode_p->i_block[0];
+
+    DirectoryEntry dir_entry;
+    DirectoryEntry empty_entry;
+    int empty_entry_pos = -1;
+    for (int i = 0; i < 16; i++) {
+        device_f.seekp(g_block_size * updir_data_pos + i * g_dir_entry_size, std::ios::beg);
+        device_f.read((char *)&dir_entry, 32);
+        if (dir_entry.name == file_name) {
+            return false;
+        }
+        if (!dir_entry.inode) {
+            empty_entry = dir_entry;
+            empty_entry_pos = i;
+        }
+    }
+    // Found empty space
+    if (empty_entry_pos >= 0) {
+        empty_entry.inode = (uint16_t) file_i_pos;
+        // TODO other file types
+        if (S_ISREG(file_inode_p->i_mode)) empty_entry.file_type = 1;
+        // TODO disable dir type (except mv)
+        if (S_ISDIR(file_inode_p->i_mode)) empty_entry.file_type = 2;
+        strcpy(empty_entry.name, file_name.c_str());
+        empty_entry.name_len = (uint8_t) file_name.size();
+        // Write dest dir data
+        device_f.seekp(g_block_size * updir_data_pos + empty_entry_pos * g_dir_entry_size,
+                       std::ios::beg);
+        device_f.write((char *)&empty_entry, g_dir_entry_size);
+        device_f.flush();
+        // Update to dest dir inode
+        dest_inode_p->i_size += 1;
+        update_inode(dest_i_pos, dest_inode_p);
+        file_inode_p->i_links_count += 1;
+        return true;
+    }
+    return false;
 }
 
 
@@ -616,38 +788,48 @@ std::string* fsprogs::get_items(std::string path, bool include_details) {
             // Format time
             time_t rawtime = tmp_inode->i_ctime;
             struct tm * timeinfo;
-            time (&rawtime);
             timeinfo = localtime (&rawtime);
             std::string tt = asctime(timeinfo);
             tt = tt.substr(0, tt.size()-1);
             // Convert mode
-            std::string imode = std::string("")
-                                + ((S_ISDIR(tmp_inode->i_mode)) ? "d" : "-")
-                                + ((tmp_inode->i_mode & S_IRUSR) ? "r" : "-")
-                                + ((tmp_inode->i_mode & S_IWUSR) ? "w" : "-")
-                                + ((tmp_inode->i_mode & S_IXUSR) ? "x" : "-")
-                                + ((tmp_inode->i_mode & S_IRGRP) ? "r" : "-")
-                                + ((tmp_inode->i_mode & S_IWGRP) ? "w" : "-")
-                                + ((tmp_inode->i_mode & S_IXGRP) ? "x" : "-")
-                                + ((tmp_inode->i_mode & S_IROTH) ? "r" : "-")
-                                + ((tmp_inode->i_mode & S_IWOTH) ? "w" : "-")
-                                + ((tmp_inode->i_mode & S_IXOTH) ? "x" : "-");
+            std::string imode = std::string(S_ISDIR(tmp_inode->i_mode) ? "d" : "-")
+                                .append((tmp_inode->i_mode & S_IRUSR) ? "r" : "-")
+                                .append((tmp_inode->i_mode & S_IWUSR) ? "w" : "-")
+                                .append((tmp_inode->i_mode & S_IXUSR) ? "x" : "-")
+                                .append((tmp_inode->i_mode & S_IRGRP) ? "r" : "-")
+                                .append((tmp_inode->i_mode & S_IWGRP) ? "w" : "-")
+                                .append((tmp_inode->i_mode & S_IXGRP) ? "x" : "-")
+                                .append((tmp_inode->i_mode & S_IROTH) ? "r" : "-")
+                                .append((tmp_inode->i_mode & S_IWOTH) ? "w" : "-")
+                                .append((tmp_inode->i_mode & S_IXOTH) ? "x" : "-");
             // Add to array
-            items_p[i] = imode + std::string(" ")
-                         + std::to_string(tmp_inode->i_links_count) + std::string(" ")
-                         + std::to_string(tmp_inode->i_uid) + std::string(" ")
-                         + std::to_string(tmp_inode->i_gid) + std::string(" ")
-                         + std::to_string(tmp_inode->i_size) + std::string(" ")
-                         + tt + std::string(" ")
-                         + dir_entry.name
-                         + (dir_entry.file_type == 2? "/" : "");
+            items_p[i] = imode.append(" ")
+                         .append(std::to_string(tmp_inode->i_links_count)).append(" ")
+                         .append(std::to_string(tmp_inode->i_uid)).append(" ")
+                         .append(std::to_string(tmp_inode->i_gid)).append(" ")
+                         .append(std::to_string(tmp_inode->i_size)).append(" ")
+                         .append(tt).append(" ")
+                         .append(dir_entry.name)
+                         .append((dir_entry.file_type == 2? "/" : ""));
             delete tmp_inode;
         } else {
-            items_p[i] = std::string(dir_entry.name) + (dir_entry.file_type == 2? "/" : "");
+            items_p[i] = std::string(dir_entry.name).append(dir_entry.file_type == 2? "/" : "");
         }
     }
 
     delete dir_inode;
 
     return items_p;
+}
+
+bool fsprogs::write_to_device(const char *data, int b_pos, unsigned long size) {
+    // Clear block first
+    device_f.seekp(g_block_size * b_pos, std::ios::beg);
+    device_f.write(empty_block, g_block_size);
+    // Write data
+    device_f.seekp(g_block_size * b_pos, std::ios::beg);
+    device_f.write(data, size);
+    // Flush
+    device_f.flush();
+    return true;
 }

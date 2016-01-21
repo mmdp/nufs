@@ -9,6 +9,7 @@ const int g_dir_entry_size=32;
 
 void log(int, std::string);
 void log(std::string, int);
+void log(std::string, std::string);
 
 int power2(int x);
 
