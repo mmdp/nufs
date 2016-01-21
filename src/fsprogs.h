@@ -70,7 +70,7 @@ private:
     // Unset taken bits
     bool recover_bitmap(char* bitmap, int* bits, int size);
 
-    std::fstream get_fsteam(std::string device_file_name);
+    std::fstream get_fstream(std::string device_file_name);
 
     bool write_to_device(const char *data, int b_pos, unsigned long size=g_block_size);
 };

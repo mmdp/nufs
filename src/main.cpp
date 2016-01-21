@@ -390,9 +390,6 @@ int main(int argc, char **argv) {
                     // FIXME once orz!!
                     if (fsp->touch_file(file_name, dir_path, current_uid, current_gid)) {
                         fsp->write_to_file(file_path, data);
-                        log("file name", file_name);
-                        log("dir path", dir_path);
-                        log("file_path", file_path);
                     }
                 } else {
                     print("Invalid arguments.");
@@ -441,8 +438,10 @@ int main(int argc, char **argv) {
                 print("Invalid arguments.");
                 continue;
             }
-            string file_path = mk_abs_path(pwd, tokens[1]);
-            print(fsp->read_file(file_path));
+            for (int i=1; i<tokens.size(); i++) {
+                string file_path = mk_abs_path(pwd, tokens[i]);
+                print(fsp->read_file(file_path));
+            }
         }
 
 

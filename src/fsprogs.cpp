@@ -3,7 +3,7 @@
 #include "fsprogs.h"
 
 fsprogs::fsprogs(std::string device_file_name) {
-    this->device_f = get_fsteam(device_file_name);
+    this->device_f = get_fstream(device_file_name);
 
     // Read Super Block
     this->sb = SuperBlock();
@@ -13,7 +13,7 @@ fsprogs::fsprogs(std::string device_file_name) {
     memset(empty_block, '\0', g_block_size);
 }
 
-std::fstream fsprogs::get_fsteam(std::string device_file_name) {
+std::fstream fsprogs::get_fstream(std::string device_file_name) {
     std::fstream device_f(device_file_name.c_str(), std::ios::in | std::ios::out | std::ios::binary);
     return device_f;
 }
