@@ -83,7 +83,7 @@ bool fsprogs::create_fs(uint16_t blocks_count) {
 
 int fsprogs::update_inode(uint16_t i_pos, Inode* inode) {
     device_f.seekp(g_block_size * 3 + i_pos * g_inode_size, std::ios::beg);
-    device_f.write((char*)inode, g_inode_size);
+    device_f.write((char*)inode, sizeof(Inode));
     device_f.flush();
     // Unknown: flush not work ?
     //log("orig node size", inode->i_size);
@@ -196,6 +196,9 @@ bool fsprogs::write_to_file(std::string file_path, std::string data) {
 
     // Get more empty blocks
     char d_bitmap[g_block_size];
+    // Read data bitmap
+    device_f.seekp(g_block_size, std::ios::beg);
+    device_f.read(d_bitmap, g_block_size);
     int need_blocks = data_blocks;
     if (data_blocks > 1) {
         if (data_blocks > 4) {
@@ -205,20 +208,17 @@ bool fsprogs::write_to_file(std::string file_path, std::string data) {
                 need_blocks = data_blocks + 1;
             }
         }
-        // Read data bitmap
-        device_f.seekp(g_block_size, std::ios::beg);
-        device_f.read(d_bitmap, g_block_size);
-        log(0, "Read data bits");
-        for (int kk =0; kk < 4; kk++) {
-            log("k", kk);
-            log("bitmap idx1", d_bitmap[kk]);
-        }
+        //log(0, "Read data bits");
+        //for (int kk =0; kk < 4; kk++) {
+        //    log("k", kk);
+        //    log("bitmap idx1", d_bitmap[kk]);
+        //}
         int* d_pos_p = get_empty_bit(d_bitmap, need_blocks-1);  // first is allocated before
-        log(0, "Read data bits");
-        for (int kk =0; kk < 4; kk++) {
-            log("k", kk);
-            log("bitmap idx1", d_bitmap[kk]);
-        }
+        //log(0, "Read data bits");
+        //for (int kk =0; kk < 4; kk++) {
+        //    log("k", kk);
+        //    log("bitmap idx1", d_bitmap[kk]);
+        //}
         if (d_pos_p[0] < 0) {
             // TODO failed
             // Unset taken data bit here?
@@ -238,13 +238,9 @@ bool fsprogs::write_to_file(std::string file_path, std::string data) {
     for (int i=0; i < data_blocks; i++) {
         // get data
         std::string tmp_string = data.substr((unsigned long) (i * g_block_size), g_block_size);
-        log(0, std::to_string(i));
-        log(0, tmp_string);
         const char *tmp_data = tmp_string.c_str();
         if (i<4) {
             inode_p->i_block[i] = file_data_pos[blk_idx++];
-            log(0, "i block i");
-            log(0, std::to_string(inode_p->i_block[i]));
             // TODO inline fun to write
             int d_pos = inode_p->i_block[i];
             write_to_device(tmp_data, d_pos, tmp_string.size());
@@ -252,13 +248,9 @@ bool fsprogs::write_to_file(std::string file_path, std::string data) {
         } else if (i>=4 && i<260) {
             if (i == 4) {
                 inode_p->i_block[4] = file_data_pos[blk_idx++];
-                log(0, "i block 4");
-                log(0, std::to_string(inode_p->i_block[4]));
             }
             // Write data pos to 4th block container
             container_block[i-4] = file_data_pos[blk_idx++];
-            log(0, "container 0 i 4");
-            log(0, std::to_string(container_block[i-4]));
             // Write data to device
             int d_pos = container_block[i-4];
             write_to_device(tmp_data, d_pos, tmp_string.size());
@@ -315,10 +307,12 @@ bool fsprogs::write_to_file(std::string file_path, std::string data) {
     char i_bitmap[g_block_size];
     device_f.seekp(g_block_size * 2, std::ios::beg);
     device_f.read(i_bitmap, g_block_size);
+    device_f.flush();
 
     // Write to data bitmap
     device_f.seekp(g_block_size, std::ios::beg);
     device_f.write(d_bitmap, g_block_size);
+    device_f.flush();
 
     // Write to inode bitmap
     device_f.seekp(g_block_size * 2, std::ios::beg);

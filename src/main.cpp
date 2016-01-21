@@ -15,6 +15,8 @@ inline string mk_abs_path(string pwd, string path);
 
 std::vector<string> split_cmd(string cmd);
 
+void prework(fsprogs*);
+
 int main(int argc, char **argv) {
 
     string device_file_name;
@@ -52,6 +54,7 @@ int main(int argc, char **argv) {
     if (tmp_inode != nullptr) {
         pwd_inode = tmp_inode;
     }
+    prework(fsp);
 
     // main loop
     char input[256];
@@ -298,6 +301,10 @@ int main(int argc, char **argv) {
             string dest_path = mk_abs_path(pwd, tokens[2]);
 
             // TODO to file
+            if (!fsp->get_last_inode(dest_path)) {
+                print("Link to file is not supported yet, use path instead.");
+                continue;
+            }
             if (!fsp->add_link(file_path, dest_path)) {
                 print("Link failed.");
                 continue;
@@ -383,6 +390,9 @@ int main(int argc, char **argv) {
                     // FIXME once orz!!
                     if (fsp->touch_file(file_name, dir_path, current_uid, current_gid)) {
                         fsp->write_to_file(file_path, data);
+                        log("file name", file_name);
+                        log("dir path", dir_path);
+                        log("file_path", file_path);
                     }
                 } else {
                     print("Invalid arguments.");
@@ -412,12 +422,8 @@ int main(int argc, char **argv) {
             }
             string dest_path = mk_abs_path(pwd, tokens[2]);
             string data = fsp->read_file(file_path);
-            print(data);
             string file_name = basename((char *) dest_path.c_str());
             string dir_path = dirname(strdup((char *) dest_path.c_str()));
-            print(dir_path);
-            print(file_name);
-            print(dest_path);
             if (fsp->touch_file(file_name, dir_path, current_uid, current_gid)) {
                 if (fsp->write_to_file(dest_path, data)) {
                     continue;
@@ -506,4 +512,14 @@ inline string mk_abs_path(string pwd, string path) {
     }
 }
 
-
+void prework(fsprogs *fsp) {
+    fsp->touch_file("linux", "/boot", 0, 0);
+    string data="The desktop computer hasn’t changed much in the last 30 years. It’s still built on windows, folders and mouse input. But we have changed. We now use smartphones and tablets most of the time, since they are much easier to use.\nThe desktop computer hasn’t changed much in the last 30 years. It’s still built on windows, folders and mouse input. But we have changed. We now use smartphones and tablets most of the time, since they are much easier to use.\nThe desktop computer hasn’t changed much in the last 30 years. It’s still built on windows, folders and mouse input. But we have changed. We now use smartphones and tablets most of the time, since they are much easier to use.\nThe desktop computer hasn’t changed much in the last 30 years. It’s still built on windows, folders and mouse input. But we have changed. We now use smartphones and tablets most of the time, since they are much easier to use.\nThe desktop computer hasn’t changed much in the last 30 years. It’s still built on windows, folders and mouse input. But we have changed. We now use smartphones and tablets most of the time, since they are much easier to use.\nThe desktop computer hasn’t changed much in the last 30 years. It’s still built on windows, folders and mouse input. But we have changed. We now use smartphones and tablets most of the time, since they are much easier to use.\nThe desktop computer hasn’t changed much in the last 30 years. It’s still built on windows, folders and mouse input. But we have changed. We now use smartphones and tablets most of the time, since they are much easier to use.\nThe desktop computer hasn’t changed much in the last 30 years. It’s still built on windows, folders and mouse input. But we have changed. We now use smartphones and tablets most of the time, since they are much easier to use.\nThe desktop computer hasn’t changed much in the last 30 years. It’s still built on windows, folders and mouse input. But we have changed. We now use smartphones and tablets most of the time, since they are much easier to use.";
+    fsp->write_to_file("/boot/linux", data);
+    data = "root:x:0:0:root:/root:/bin/bash";
+    fsp->touch_file("passwd", "/etc", 0, 0);
+    fsp->write_to_file("/etc/passwd", data);
+    data = "root:x:0:root";
+    fsp->touch_file("group", "/etc", 0, 0);
+    fsp->write_to_file("/etc/group", data);
+}

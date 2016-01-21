@@ -35,7 +35,7 @@ public:
     bool create_directory(std::string dir_name, std::string path, uint16_t uid, uint16_t gid);
 
     // Create empty regular file
-    bool touch_file(std::string dir_name, std::string path, uint16_t uid, uint16_t gid);
+    bool touch_file(std::string file_name, std::string path, uint16_t uid, uint16_t gid);
 
     // Write data to file
     bool write_to_file(std::string file_path, std::string data);

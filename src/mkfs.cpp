@@ -52,10 +52,10 @@ bool create_base_tree(fsprogs *fsp) {
     fsp->create_directory("lib", "/", 0, 0);
     fsp->create_directory("usr", "/", 0, 0);
     fsp->create_directory("var", "/", 0, 0);
-    fsp->create_directory("sys", "/", 0, 0);
-    fsp->create_directory("run", "/", 0, 0);
     fsp->create_directory("dev", "/", 0, 0);
-    fsp->create_directory("proc", "/", 0, 0);
+    //fsp->create_directory("sys", "/", 0, 0);
+    //fsp->create_directory("run", "/", 0, 0);
+    //fsp->create_directory("proc", "/", 0, 0);
     fsp->create_directory("root", "/", 0, 0);
     fsp->create_directory("mnt", "/", 0, 0);
     fsp->create_directory("home", "/", 0, 0);
